@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- connect-src 'self' is the browser-enforced half of "never uploaded". -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; connect-src 'self' blob: data:; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Donkey Kong Country 3 — bring your own ROM</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#14120c; --panel:#1d1a12; --fg:#efe9d8; --dim:#9e978a; --accent:#5fa8c9; --line:#332e22; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font:14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #wrap { display:flex; flex-direction:column; height:100%; }
+  #game { flex:1; min-height:0; background:#000; display:flex; align-items:center; justify-content:center; }
+  #screen { max-width:100%; max-height:100%; height:100%; aspect-ratio:8/7; image-rendering:pixelated; outline:none; }
+  #bar { padding:7px 14px; color:var(--dim); font-size:12px; display:flex; gap:14px;
+    flex-wrap:wrap; align-items:center; border-top:1px solid var(--line); }
+  #bar b { color:var(--fg); font-weight:600; }
+  #bar button, #bar label.btn { font:inherit; font-size:12px; padding:1px 9px; border-radius:999px;
+    border:1px solid var(--line); background:transparent; color:var(--fg); cursor:pointer; }
+  #bar input[type=file] { display:none; }
+  #pick { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    padding:16px; background:radial-gradient(60% 60% at 50% 35%, #241f14, var(--bg)); z-index:10; }
+  body.playing #pick { display:none; }
+  #card { width:min(640px, 100%); background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:22px 24px 20px; }
+  h1 { margin:0 0 2px; font-size:21px; }
+  h1 span { color:var(--accent); }
+  .sub { margin:0 0 18px; color:var(--dim); font-size:13px; }
+  .sub a { color:var(--accent); }
+  #drop { border:1.5px dashed #4a422e; border-radius:11px; padding:26px 18px; text-align:center; cursor:pointer; }
+  #drop.hot { border-color:var(--accent); background:#241f14; }
+  #drop .big { font-size:15px; margin-bottom:5px; }
+  #drop .small { color:var(--dim); font-size:12px; }
+  #file { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  ul.notes { margin:16px 0 0; padding-left:18px; color:var(--dim); font-size:12px; }
+  ul.notes li { margin:3px 0; }
+  ul.notes b { color:var(--fg); font-weight:600; }
+  #err { margin-top:12px; color:#e6734f; font-size:12.5px; display:none; }
+  #ok { margin-top:12px; color:#8fbf6a; font-size:12.5px; display:none; }
+  .keys { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); color:var(--dim); font-size:12px; }
+  kbd { border:1px solid #4a422e; border-bottom-width:2px; border-radius:4px; padding:0 5px;
+    font:11px ui-monospace, monospace; color:var(--fg); }
+  code { font:11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="game"><canvas id="screen" width="256" height="224" tabindex="0"></canvas></div>
+  <div id="bar">
+    <span><b>Donkey Kong Country 3</b></span>
+    <button id="sound">Sound: on</button>
+    <button id="pause">Pause</button>
+    <button id="stateSave">Export state</button>
+    <label class="btn">Import state<input type="file" id="stateLoad"></label>
+    <button id="sramSave">Export save</button>
+    <label class="btn">Import save<input type="file" id="sramLoad" accept=".json"></label>
+    <span id="status">waiting for a ROM</span>
+  </div>
+</div>
+
+<div id="pick">
+  <div id="card">
+    <h1>Donkey Kong Country <span>3</span></h1>
+    <p class="sub">Runs in this tab on an open-source (MIT) SNES machine compiled to WebAssembly.
+      The game itself &mdash; code, graphics, levels and sound &mdash; comes entirely from the ROM you load.</p>
+
+    <div id="drop" tabindex="0" role="button" aria-label="Choose a ROM file">
+      <div class="big">Choose a <code>.sfc</code> file, or drop one here</div>
+      <div class="small">USA (En,Fr), headerless &middot; 4,194,304 bytes</div>
+    </div>
+    <input type="file" id="file" accept=".sfc,.smc,application/octet-stream">
+
+    <div id="err"></div>
+    <div id="ok"></div>
+
+    <ul class="notes">
+      <li>The file is read in this tab and handed straight to the game. <b>It is never uploaded.</b> The page's content-security-policy lets it talk to nothing but its own origin.</li>
+      <li>The game's save file is kept in this browser and survives a reload. Clearing site data clears it.</li>
+      <li>No ROM, and nothing extracted from one, ships with this page.</li>
+    </ul>
+
+    <div class="keys">
+      <kbd>&larr;&uarr;&darr;&rarr;</kbd> D-pad &middot; <kbd>Z</kbd> B (jump) &middot; <kbd>A</kbd> Y (run / roll) &middot;
+      <kbd>X</kbd> A &middot; <kbd>S</kbd> X &middot; <kbd>Enter</kbd> Start &middot; <kbd>Shift</kbd> Select &middot; gamepads work too
+    </div>
+  </div>
+</div>
+
+<script src="dkc3.js"></script>
+<script>
+(function () {
+  "use strict";
+  var Q = new URLSearchParams(location.search);
+  var ROM_SHA = "2277a2d8dddb01fe5cb0ae9a0fa225d42b3a11adccaeafa18e3c339b3794a32b";
+  var FMT = "dkc3-native", SRAM_KEY = "dkc3-native";
+  // The machine makes 534 samples per NTSC frame (its DSP clock is tied to a 60.0 Hz frame),
+  // so at 60.0988 frames a second the stream arrives at 534 * 60.0988 = 32093 Hz.
+  var FRAME_MS = 1000 / 60.098811862, RATE = 32093;
+
+  var el = function (id) { return document.getElementById(id); };
+  var canvas = el("screen"), ctx2d = canvas.getContext("2d"), img = ctx2d.createImageData(256, 224);
+  var status = el("status"), errBox = el("err"), okBox = el("ok"), drop = el("drop"), fileInput = el("file");
+  var mod = null, running = false, keys = 0, last = 0, acc = 0;
+
+  function fail(msg) { errBox.textContent = msg; errBox.style.display = "block"; okBox.style.display = "none"; }
+  function hex(buf) { return Array.from(new Uint8Array(buf), function (x) { return x.toString(16).padStart(2, "0"); }).join(""); }
+  function sha256(b) { return crypto.subtle.digest("SHA-256", b).then(hex); }
+  function b64(u8) { var s = ""; for (var i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); }
+  function unb64(s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+
+  // ------------------------------------------------------------------ input
+  // Bit order is the SNES pad as the runtime reads it: B Y Select Start Up Down Left Right A X.
+  var KEYMAP = { ArrowUp:4, ArrowDown:5, ArrowLeft:6, ArrowRight:7, KeyZ:0, KeyA:1, Enter:3,
+                 ShiftRight:2, ShiftLeft:2, KeyX:8, KeyS:9 };
+  window.addEventListener("keydown", function (e) { if (KEYMAP[e.code] !== undefined && mod) { e.preventDefault(); keys |= 1 << KEYMAP[e.code]; } });
+  window.addEventListener("keyup", function (e) { if (KEYMAP[e.code] !== undefined) { e.preventDefault(); keys &= ~(1 << KEYMAP[e.code]); } });
+  window.addEventListener("blur", function () { keys = 0; });
+  var PADMAP = [[0, 0], [2, 1], [8, 2], [9, 3], [12, 4], [13, 5], [14, 6], [15, 7], [1, 8], [3, 9]];
+  function padBits() {
+    var bits = 0, pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (var i = 0; i < pads.length; i++) {
+      var p = pads[i];
+      if (!p) continue;
+      PADMAP.forEach(function (m) { if (p.buttons[m[0]] && p.buttons[m[0]].pressed) bits |= 1 << m[1]; });
+      if (p.axes.length >= 2) {
+        if (p.axes[1] < -0.5) bits |= 1 << 4; if (p.axes[1] > 0.5) bits |= 1 << 5;
+        if (p.axes[0] < -0.5) bits |= 1 << 6; if (p.axes[0] > 0.5) bits |= 1 << 7;
+      }
+    }
+    return bits;
+  }
+
+  // ------------------------------------------------------------------ sound
+  // Every frame the game produces ~534 stereo samples. They are queued
+  // back to back on the audio clock; if the queue runs ahead (a slow tab catching
+  // up) the frame's audio is dropped rather than letting latency build.
+  var audio = null, nextT = 0, soundOn = !Q.has("mute");
+  var stats = window.__audioStats = { frames: 0, samples: 0, peak: 0, nonzero: 0, dropped: 0 };
+  function ensureAudio() {
+    if (audio || !soundOn) return;
+    try { audio = new (window.AudioContext || window.webkitAudioContext)(); nextT = 0; } catch (e) { audio = null; }
+  }
+  function pushAudio() {
+    var n = mod._dkc_web_audio_count();
+    if (n <= 0) return;
+    var pcm = new Int16Array(mod.HEAPU8.buffer, mod._dkc_web_audio(), n * 2);
+    var peak = 0;
+    for (var i = 0; i < pcm.length; i++) { var v = pcm[i] < 0 ? -pcm[i] : pcm[i]; if (v > peak) peak = v; }
+    stats.frames++; stats.samples += n; if (peak > stats.peak) stats.peak = peak; if (peak > 0) stats.nonzero++;
+    if (!audio || !soundOn || audio.state !== "running") return;
+    var now = audio.currentTime;
+    if (nextT < now + 0.02) nextT = now + 0.04;
+    if (nextT > now + 0.25) { stats.dropped++; return; }
+    var buf = audio.createBuffer(2, n, RATE), L = buf.getChannelData(0), R = buf.getChannelData(1);
+    for (var j = 0; j < n; j++) { L[j] = pcm[2 * j] / 32768; R[j] = pcm[2 * j + 1] / 32768; }
+    var src = audio.createBufferSource();
+    src.buffer = buf; src.connect(audio.destination); src.start(nextT);
+    nextT += n / RATE;
+  }
+  function soundLabel() {
+    el("sound").textContent = !soundOn ? "Sound: off" : (audio && audio.state === "running" ? "Sound: on" : "Sound: click to start");
+  }
+  el("sound").addEventListener("click", function () {
+    if (soundOn && audio && audio.state !== "running") { audio.resume().then(soundLabel); return; }
+    soundOn = !soundOn;
+    if (soundOn) { ensureAudio(); if (audio) audio.resume().then(soundLabel); }
+    else if (audio) audio.suspend();
+    soundLabel();
+  });
+  // Browsers only start audio after a gesture; the first key or click covers it.
+  ["keydown", "pointerdown"].forEach(function (t) {
+    window.addEventListener(t, function () { if (soundOn && audio && audio.state === "suspended") audio.resume().then(soundLabel); });
+  });
+
+  // ------------------------------------------------------------------ video + loop
+  function draw() {
+    var p = mod._dkc_web_pixels(), b = mod.HEAPU8, d = img.data;
+    for (var i = 0; i < d.length; i += 4) { d[i] = b[p + i + 2]; d[i + 1] = b[p + i + 1]; d[i + 2] = b[p + i]; d[i + 3] = 255; }
+    ctx2d.putImageData(img, 0, 0);
+  }
+  function tick(t) {
+    if (running) {
+      acc += Math.min(100, t - last);
+      var count = 0;
+      while (acc >= FRAME_MS && count++ < 6) {
+        var frame = mod._dkc_web_step(keys | padBits());
+        if (frame < 0) { running = false; status.textContent = "The game stopped; see the console."; break; }
+        pushAudio();
+        acc -= FRAME_MS;
+      }
+      draw();
+    }
+    last = t;
+    requestAnimationFrame(tick);
+  }
+
+  // ------------------------------------------------------------------ battery save
+  function sramBytes() { var p = mod._dkc_web_sram(), n = mod._dkc_web_sram_size(); return mod.HEAPU8.slice(p, p + n); }
+  function restoreSram() {
+    try {
+      var s = localStorage.getItem(SRAM_KEY);
+      if (!s) return false;
+      var b = unb64(s);
+      if (b.length !== mod._dkc_web_sram_size()) return false;
+      mod.HEAPU8.set(b, mod._dkc_web_sram());
+      return true;
+    } catch (e) { return false; }
+  }
+  var lastSram = "";
+  function persistSram() {
+    if (!mod) return;
+    try {
+      var s = b64(sramBytes());
+      if (s === lastSram) return;
+      localStorage.setItem(SRAM_KEY, s); lastSram = s;
+      status.textContent = "save stored in this browser · " + new Date().toLocaleTimeString();
+    } catch (e) { /* storage unavailable: the Export save button still works */ }
+  }
+  window.__persistSram = persistSram;
+
+  // ------------------------------------------------------------------ ROM intake
+  async function loadRom(buf, name) {
+    if (mod) return;
+    var bytes = new Uint8Array(buf);
+    if (bytes.length % 1024 === 512) bytes = bytes.subarray(512);       // copier header
+    if (bytes.length !== 4194304) { fail("That file is " + bytes.length.toLocaleString() + " bytes. This game is 4,194,304 bytes (4 MiB)."); return; }
+    var hash;
+    try { hash = await sha256(bytes); } catch (e) { fail("This page needs https:// or localhost to check the ROM."); return; }
+    if (hash !== ROM_SHA) { fail("Not the supported ROM (USA (En,Fr), headerless). This page has only been tested with that exact version."); return; }
+    okBox.textContent = "ROM verified. Starting…"; okBox.style.display = "block"; errBox.style.display = "none";
+    ensureAudio();
+    try {
+      mod = await createDKC3({ printErr: function (s) { console.error(s); } });
+      window.game = mod;
+      mod.FS.writeFile("/input.sfc", bytes);
+      if (mod.ccall("dkc_web_init", "number", ["string"], ["/input.sfc"]) !== 0) throw new Error("The game could not start from that ROM.");
+    } catch (e) { mod = null; fail(e.message); console.error(e); return; }
+    var restored = restoreSram();
+    lastSram = b64(sramBytes());
+    document.body.classList.add("playing");
+    status.textContent = restored ? "save restored from this browser" : "running";
+    soundLabel();
+    running = true; last = performance.now(); acc = 0;
+    canvas.focus();
+    requestAnimationFrame(tick);
+    setInterval(persistSram, 5000);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") persistSram(); });
+    window.addEventListener("pagehide", persistSram);
+    console.log("DKC: started, save restored=" + restored);
+  }
+
+  el("pause").addEventListener("click", function () {
+    if (!mod) return;
+    running = !running; el("pause").textContent = running ? "Pause" : "Resume"; keys = 0;
+    if (audio && soundOn) { if (running) audio.resume(); else audio.suspend(); }
+  });
+  function download(blob, name) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+  el("stateSave").addEventListener("click", function () {
+    if (!mod) return;
+    if (!mod.ccall("dkc_web_save", "number", ["string"], ["/state.bin"])) { status.textContent = "State export failed."; return; }
+    download(new Blob([mod.FS.readFile("/state.bin")]), FMT + ".state");
+  });
+  el("stateLoad").addEventListener("change", async function (e) {
+    if (!mod || !e.target.files[0]) return;
+    mod.FS.writeFile("/state.bin", new Uint8Array(await e.target.files[0].arrayBuffer()));
+    if (!mod.ccall("dkc_web_load", "number", ["string"], ["/state.bin"])) status.textContent = "State import failed.";
+    else { mod._dkc_web_step(0); draw(); status.textContent = "State imported."; }
+    e.target.value = "";
+  });
+  el("sramSave").addEventListener("click", async function () {
+    if (!mod) return;
+    var b = sramBytes();
+    var file = { format: FMT + "-sram-v1", romSHA256: ROM_SHA, size: b.length, payloadSHA256: await sha256(b), data: b64(b) };
+    download(new Blob([JSON.stringify(file)], { type: "application/json" }), FMT + ".sram.json");
+  });
+  el("sramLoad").addEventListener("change", async function (e) {
+    try {
+      if (!mod) throw new Error("Load the ROM first.");
+      var file = JSON.parse(await e.target.files[0].text());
+      if (file.format !== FMT + "-sram-v1" || file.romSHA256 !== ROM_SHA) throw new Error("That save belongs to a different game.");
+      var b = unb64(file.data);
+      if (file.size !== b.length || b.length !== mod._dkc_web_sram_size() || await sha256(b) !== file.payloadSHA256) throw new Error("Save size or checksum failed.");
+      mod.HEAPU8.set(b, mod._dkc_web_sram());
+      persistSram();
+      status.textContent = "Save imported. Reload the page to start from it.";
+    } catch (err) { status.textContent = err.message; }
+    e.target.value = "";
+  });
+
+  drop.addEventListener("click", function () { fileInput.click(); });
+  drop.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener("change", async function () { var f = fileInput.files && fileInput.files[0]; if (f) await loadRom(await f.arrayBuffer(), f.name); });
+  ["dragenter", "dragover"].forEach(function (k) { drop.addEventListener(k, function (e) { e.preventDefault(); drop.classList.add("hot"); }); });
+  ["dragleave", "drop"].forEach(function (k) { drop.addEventListener(k, function (e) { e.preventDefault(); drop.classList.remove("hot"); }); });
+  drop.addEventListener("drop", async function (e) { var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) await loadRom(await f.arrayBuffer(), f.name); });
+})();
+</script>
+</body>
+</html>
