@@ -88,7 +88,9 @@ Time per frame in node on the development PC: about 6 ms (oracle builds: 1.5-2.2
 - Nothing past the first minute or two of each game. No boss, no bonus room, no ending. DKC3 was not taken
   into a platforming level.
 - Speed on phones or slow laptops. The interpreted CPU costs 3-4 times what the recompilation did.
-- Audio scheduling in a tab with sound on. The machine produces 534 samples per frame (LakeSnes ties its DSP
+- Audio scheduling as heard. Measured only with the browser muted at process level: over 120 s of DKC1 the
+  page dropped 27 of 7,205 frame buffers, the oracle page 23 of 7,204 under the same conditions (a headless
+  tab paces frames unevenly), so the two behave alike there. The machine produces 534 samples per frame (LakeSnes ties its DSP
   clock to a 60.0 Hz frame; a console makes about 533.1), so the page plays the stream at 32,093 Hz instead of
   32,040. That constant is arithmetic, not a measurement, and the first second after power-on delivers a few
   irregular bursts.
