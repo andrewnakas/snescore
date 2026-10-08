@@ -1,0 +1,26 @@
+# ROMs and anything derived from one never belong in this repository
+*.sfc
+*.smc
+*.swc
+*.fig
+*.rom
+*.zip
+*.7z
+baserom*
+generated/
+# saves and snapshots
+*.srm
+*.sav
+*.state
+*.sram.json
+*.bin
+*.pcm
+# build output and test artefacts
+dist/
+out/
+shots/
+*.png
+*.o
+*.wasm
+node_modules/
+__pycache__/
